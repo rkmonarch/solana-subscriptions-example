@@ -78,7 +78,7 @@ export const SERVICES: ServiceConfig[] = [
     tagline: "Music streaming, ad-free",
     priceUsdc: 2,
     color: "#1DB954",
-    planId: 1n,
+    planId: 2n, // planId 1 was created with wrong (demo) mint; 2 = correct Circle devnet USDC
     ownerEnvVar: "NEXT_PUBLIC_SPOTIFY_OWNER",
   },
   {
@@ -87,7 +87,7 @@ export const SERVICES: ServiceConfig[] = [
     tagline: "Movies & shows on demand",
     priceUsdc: 5,
     color: "#E50914",
-    planId: 1n,
+    planId: 2n, // planId 1 was created with wrong (demo) mint; 2 = correct Circle devnet USDC
     ownerEnvVar: "NEXT_PUBLIC_NETFLIX_OWNER",
   },
 ];

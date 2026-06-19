@@ -8,4 +8,4 @@ export * from "./actions";
 export * from "./constants";
 export * from "./queries";
 export * from "./token";
-export { signAndSendInstructions } from "./legacy-bridge";
+export { signAndSendInstructions, fromLegacyInstruction } from "./legacy-bridge";

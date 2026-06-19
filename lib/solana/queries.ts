@@ -6,8 +6,10 @@ import {
   fetchMaybeSubscriptionAuthority,
   fetchMaybePlan,
   fetchSubscriptionsForUser,
+  fetchDelegationsByDelegatee,
   findPlanPda,
   findSubscriptionAuthorityPda,
+  type Delegation,
   type Plan,
   type SubscriptionAuthority,
   type SubscriptionDelegation,
@@ -53,4 +55,23 @@ export async function getUserSubscriptions(
   user: Address,
 ): Promise<SubscriptionRecord[]> {
   return fetchSubscriptionsForUser(getRpc(), user);
+}
+
+export type { Delegation };
+
+/**
+ * All delegations where `merchant` is the delegatee — i.e., every subscriber that has
+ * granted this merchant permission to pull payments. Filters to subscription-kind only.
+ */
+export async function getMerchantSubscriptions(
+  merchant: Address,
+): Promise<Array<{ address: Address; data: SubscriptionDelegation; subscriber: Address }>> {
+  const all: Delegation[] = await fetchDelegationsByDelegatee(getRpc(), merchant);
+  return all
+    .filter((d): d is Extract<Delegation, { kind: "subscription" }> => d.kind === "subscription")
+    .map((d) => ({
+      address: d.address,
+      data: d.data,
+      subscriber: d.data.header.delegator,
+    }));
 }

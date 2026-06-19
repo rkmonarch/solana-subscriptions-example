@@ -114,11 +114,26 @@ async function ensureFunded(label: string, signer: Signer) {
 
 async function ensurePlan(merchant: Signer, service: (typeof SERVICES)[number]) {
   const existingPlan = await getPlan(merchant.address, service.planId).catch(() => null);
+
   if (existingPlan) {
-    console.log(`  ${service.name}: plan already on-chain (plan id ${service.planId}) ✓`);
+    const planMint = existingPlan.data.data.mint;
+    if (planMint === USDC_MINT) {
+      console.log(`  ${service.name}: plan ${service.planId} on-chain with correct USDC mint ✓`);
+    } else {
+      // The plan exists with a different mint (e.g. the old demo TUSDC from the first bootstrap
+      // run). On-chain Subscriptions plans with endTs=0 cannot be deleted — so we can't replace
+      // it in-place. Instead, bump the planId so bootstrap creates a fresh plan at the new ID.
+      // If you see this message, update SERVICES.planId in constants.ts and re-run bootstrap.
+      console.warn(
+        `  ${service.name}: plan ${service.planId} has wrong mint (${planMint})! ` +
+        `This can't be replaced because the program only allows deleting EXPIRED plans. ` +
+        `Bump SERVICES.planId in constants.ts (e.g. 1n → 2n) and re-run bootstrap.`,
+      );
+    }
     return;
   }
 
+  // Create the plan with the correct Circle devnet USDC mint
   const mint = new PublicKey(USDC_MINT);
   console.log(`  ${service.name}: creating merchant ATA for devnet USDC...`);
   const merchantAta = await getOrCreateAssociatedTokenAccount(
@@ -128,7 +143,7 @@ async function ensurePlan(merchant: Signer, service: (typeof SERVICES)[number]) 
     merchant.legacyKeypair.publicKey,
   );
 
-  console.log(`  ${service.name}: publishing $${service.priceUsdc}/30-day plan...`);
+  console.log(`  ${service.name}: publishing $${service.priceUsdc}/30-day plan with Circle USDC...`);
   const ix = await getCreatePlanOverlayInstructionAsync({
     owner: merchant.kitSigner,
     mint: USDC_MINT,
@@ -166,8 +181,8 @@ async function main() {
     NEXT_PUBLIC_RPC_URL: RPC_URL,
     NEXT_PUBLIC_SPOTIFY_OWNER: spotify.address,
     NEXT_PUBLIC_NETFLIX_OWNER: netflix.address,
-    NEXT_PUBLIC_SPOTIFY_PLAN_ID: "1",
-    NEXT_PUBLIC_NETFLIX_PLAN_ID: "1",
+    NEXT_PUBLIC_SPOTIFY_PLAN_ID: String(SERVICES.find((s) => s.id === "spotify")?.planId ?? 2),
+    NEXT_PUBLIC_NETFLIX_PLAN_ID: String(SERVICES.find((s) => s.id === "netflix")?.planId ?? 2),
   });
   Object.assign(process.env, readEnvLocal());
 
