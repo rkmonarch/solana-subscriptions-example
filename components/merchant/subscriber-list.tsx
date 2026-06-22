@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import {
   getMerchantSubscriptions,
-  getServiceOwner,
   explorerTxUrl,
   type ServiceConfig,
 } from "@/lib/solana";
@@ -39,8 +38,7 @@ export function SubscriberList({ service, refreshKey, onRefresh }: SubscriberLis
   const fetchSubs = useCallback(async () => {
     setLoading(true);
     try {
-      const merchant = getServiceOwner(service);
-      const data = await getMerchantSubscriptions(merchant);
+      const data = await getMerchantSubscriptions(service);
       setSubs(data);
     } catch (err) {
       console.error("Failed to load subscribers:", err);

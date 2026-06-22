@@ -7,18 +7,24 @@ import { BalanceCard } from "@/components/dashboard/balance-card";
 import { PlanCard } from "@/components/dashboard/plan-card";
 import { SubscriptionList } from "@/components/dashboard/subscription-list";
 import { Navbar } from "@/components/navbar";
-import { useMySubscriptions } from "@/lib/hooks";
-import { SERVICES, getServiceOwner } from "@/lib/solana";
+import { useServiceSubscriptions } from "@/lib/hooks";
+import { SERVICES } from "@/lib/solana";
 
 export default function DashboardPage() {
   const { publicKey } = useWallet();
-  const { subscriptions } = useMySubscriptions();
+  // Keyed by service.id, true if the user has an active (non-cancelled) subscription.
+  const { serviceSubscriptions } = useServiceSubscriptions();
 
-  const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
-  const activeMerchants = new Set(
-    subscriptions
-      .filter((sub) => sub.data.expiresAtTs === 0n || sub.data.expiresAtTs > nowSeconds)
-      .map((sub) => sub.data.header.delegatee),
+  // Active = subscription exists AND has not been cancelled.
+  // expiresAtTs === 0n means perpetual/active; any non-zero value means the user cancelled
+  // (the program sets it to the period-end timestamp, not 0, when cancelled).
+  const isSubscribedMap = Object.fromEntries(
+    serviceSubscriptions.map((ss) => [
+      ss.service.id,
+      // Only treat as "subscribed" when on the CURRENT planId. An active subscription on an
+      // old planId (isCurrentPlan=false) still allows the user to subscribe to the new planId.
+      ss.data !== null && ss.data.expiresAtTs === 0n && ss.isCurrentPlan,
+    ]),
   );
 
   return (
@@ -64,15 +70,13 @@ export default function DashboardPage() {
         <section className="flex flex-col gap-4">
           <h2 className="text-lg font-medium">Available plans</h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            {SERVICES.map((service) => {
-              let isSubscribed = false;
-              try {
-                isSubscribed = activeMerchants.has(getServiceOwner(service));
-              } catch {
-                isSubscribed = false;
-              }
-              return <PlanCard key={service.id} service={service} isSubscribed={isSubscribed} />;
-            })}
+            {SERVICES.map((service) => (
+              <PlanCard
+                key={service.id}
+                service={service}
+                isSubscribed={!!isSubscribedMap[service.id]}
+              />
+            ))}
           </div>
         </section>
 

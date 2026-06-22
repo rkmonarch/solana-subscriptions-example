@@ -78,7 +78,7 @@ export const SERVICES: ServiceConfig[] = [
     tagline: "Music streaming, ad-free",
     priceUsdc: 2,
     color: "#1DB954",
-    planId: 2n, // planId 1 was created with wrong (demo) mint; 2 = correct Circle devnet USDC
+    planId: 3n, // planId 1 = wrong demo mint; planId 2 = correct USDC mint but wrong destination format (ATA addr instead of owner wallet); planId 3 = fixed
     ownerEnvVar: "NEXT_PUBLIC_SPOTIFY_OWNER",
   },
   {
@@ -87,7 +87,7 @@ export const SERVICES: ServiceConfig[] = [
     tagline: "Movies & shows on demand",
     priceUsdc: 5,
     color: "#E50914",
-    planId: 2n, // planId 1 was created with wrong (demo) mint; 2 = correct Circle devnet USDC
+    planId: 3n, // planId 1 = wrong demo mint; planId 2 = wrong destination format; planId 3 = fixed
     ownerEnvVar: "NEXT_PUBLIC_NETFLIX_OWNER",
   },
 ];

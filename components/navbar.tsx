@@ -1,7 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Radio } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Radio, Store } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { CLUSTER } from "@/lib/solana/constants";
@@ -20,6 +22,9 @@ const WalletMultiButton = dynamic(
 );
 
 export function Navbar() {
+  const pathname = usePathname();
+  const isMerchant = pathname === "/merchant";
+
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -36,6 +41,14 @@ export function Navbar() {
           <Badge variant="outline" className="hidden capitalize sm:inline-flex">
             {CLUSTER}
           </Badge>
+          {/* Toggle between subscriber view and merchant dashboard */}
+          <Link
+            href={isMerchant ? "/" : "/merchant"}
+            className="flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+          >
+            <Store className="h-3.5 w-3.5" />
+            {isMerchant ? "Subscriber view" : "Merchant"}
+          </Link>
           <WalletMultiButton />
         </div>
       </div>
