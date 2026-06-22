@@ -20,13 +20,13 @@ import "@solana/wallet-adapter-react-ui/styles.css";
  */
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
+    <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>
       <ConnectionProvider endpoint={RPC_URL}>
         <WalletProvider wallets={[]} autoConnect>
           <WalletModalProvider>
             <TooltipProvider delay={150}>
               {children}
-              <Toaster richColors position="bottom-right" theme="dark" />
+              <Toaster richColors position="bottom-right" theme="light" />
             </TooltipProvider>
           </WalletModalProvider>
         </WalletProvider>
