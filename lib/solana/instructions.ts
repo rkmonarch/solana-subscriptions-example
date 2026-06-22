@@ -69,8 +69,9 @@ export async function buildCancelSubscriptionInstruction(
   subscriber: Address,
   merchant: Address,
   planId: bigint,
+  explicitPlanPda?: Address, // use when cancelling old subscriptions whose planId differs from current config
 ): Promise<Instruction> {
-  const [planPda] = await findPlanPda({ owner: merchant, planId });
+  const planPda = explicitPlanPda ?? (await findPlanPda({ owner: merchant, planId }))[0];
   return getCancelSubscriptionOverlayInstructionAsync({
     planPda,
     subscriber: createNoopSigner(subscriber),
@@ -81,8 +82,9 @@ export async function buildResumeSubscriptionInstruction(
   subscriber: Address,
   merchant: Address,
   planId: bigint,
+  explicitPlanPda?: Address,
 ): Promise<Instruction> {
-  const [planPda] = await findPlanPda({ owner: merchant, planId });
+  const planPda = explicitPlanPda ?? (await findPlanPda({ owner: merchant, planId }))[0];
   return getResumeSubscriptionOverlayInstructionAsync({
     planPda,
     subscriber: createNoopSigner(subscriber),
@@ -99,11 +101,26 @@ export async function buildPullPaymentInstruction(params: {
 }): Promise<Instruction> {
   const { merchantSigner, subscriber, planId, tokenMint, amount } = params;
   const [planPda] = await findPlanPda({ owner: merchantSigner.address, planId });
-  const [subscriptionPda] = await findSubscriptionDelegationPda({
-    planPda,
-    subscriber,
+  const [subscriptionPda] = await findSubscriptionDelegationPda({ planPda, subscriber });
+  return buildPullPaymentInstructionWithPda({
+    merchantSigner, subscriber, subscriptionPda, planPda, tokenMint, amount,
   });
+}
 
+/**
+ * Like buildPullPaymentInstruction but accepts explicit PDAs — used by the API route when
+ * the subscription may exist under a different planId than the current service config, so we
+ * pass the located subscriptionPda + the CURRENT plan's planPda (for correct destinations).
+ */
+export async function buildPullPaymentInstructionWithPda(params: {
+  merchantSigner: TransactionSigner;
+  subscriber: Address;
+  subscriptionPda: Address;
+  planPda: Address;
+  tokenMint: Address;
+  amount: bigint;
+}): Promise<Instruction> {
+  const { merchantSigner, subscriber, subscriptionPda, planPda, tokenMint, amount } = params;
   return getTransferSubscriptionOverlayInstructionAsync({
     amount,
     caller: merchantSigner,

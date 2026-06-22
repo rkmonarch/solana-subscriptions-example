@@ -1,10 +1,5 @@
 "use client";
 
-/**
- * Small client-side data hooks. No React Query here on purpose — the app's data needs are
- * simple enough that a `useEffect` + the shared `refreshKey` signal (bumped after every
- * transaction, see `lib/store.ts`) keeps things easy to follow.
- */
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { address } from "@solana/kit";
 import { useCallback, useEffect, useState } from "react";
@@ -12,12 +7,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getPlan,
   getServiceOwner,
+  getServiceSubscriptions,
   getTokenBalance,
   getUsdcMint,
-  getUserSubscriptions,
   type PlanRecord,
   type ServiceConfig,
-  type SubscriptionRecord,
+  type ServiceSubscription,
 } from "@/lib/solana";
 import { useAppStore } from "@/lib/store";
 
@@ -29,10 +24,7 @@ export function useUsdcBalance() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!publicKey) {
-      setBalance(null);
-      return;
-    }
+    if (!publicKey) { setBalance(null); return; }
     let cancelled = false;
     setLoading(true);
     (async () => {
@@ -46,9 +38,7 @@ export function useUsdcBalance() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [connection, publicKey, refreshKey]);
 
   return { balance, loading };
@@ -78,37 +68,37 @@ export function usePlan(service: ServiceConfig) {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [service, refreshKey]);
 
   return { plan, loading, error };
 }
 
-export function useMySubscriptions() {
+/**
+ * Returns one entry per known service (Spotify, Netflix), each with live subscription data.
+ * Uses PDA derivation to match subscriptions to services — does NOT rely on `header.delegatee`
+ * (which the program sets to planPda, not merchant wallet, breaking address-based matching).
+ */
+export function useServiceSubscriptions() {
   const { publicKey } = useWallet();
   const refreshKey = useAppStore((s) => s.refreshKey);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionRecord[]>([]);
+  const [serviceSubscriptions, setServiceSubscriptions] = useState<ServiceSubscription[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refetch = useCallback(async () => {
-    if (!publicKey) {
-      setSubscriptions([]);
-      return;
-    }
+    if (!publicKey) { setServiceSubscriptions([]); return; }
     setLoading(true);
     try {
-      const subs = await getUserSubscriptions(address(publicKey.toBase58()));
-      setSubscriptions(subs);
+      const subs = await getServiceSubscriptions(address(publicKey.toBase58()));
+      setServiceSubscriptions(subs);
+    } catch {
+      setServiceSubscriptions([]);
     } finally {
       setLoading(false);
     }
   }, [publicKey]);
 
-  useEffect(() => {
-    refetch();
-  }, [refetch, refreshKey]);
+  useEffect(() => { refetch(); }, [refetch, refreshKey]);
 
-  return { subscriptions, loading, refetch };
+  return { serviceSubscriptions, loading, refetch };
 }

@@ -2,156 +2,173 @@
 
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { format } from "date-fns";
-import { Loader2, PlayCircle, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, Loader2, PlayCircle, XCircle, Zap } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  USDC_DECIMALS,
-  cancelService,
-  findServiceByOwner,
-  resumeService,
-  type SubscriptionRecord,
-} from "@/lib/solana";
+import { cancelService, resumeService, USDC_DECIMALS, type ServiceSubscription } from "@/lib/solana";
 import { useAppStore } from "@/lib/store";
 
 interface SubscriptionItemProps {
-  subscription: SubscriptionRecord;
+  serviceSub: ServiceSubscription;
 }
 
 type Busy = "cancel" | "resume" | "pull" | null;
 
-export function SubscriptionItem({ subscription }: SubscriptionItemProps) {
+export function SubscriptionItem({ serviceSub }: SubscriptionItemProps) {
   const { connection } = useConnection();
   const wallet = useWallet();
   const [busy, setBusy] = useState<Busy>(null);
+  const [dismissed, setDismissed] = useState(false);
   const refresh = useAppStore((s) => s.refresh);
   const logActivity = useAppStore((s) => s.logActivity);
 
-  const { header, terms, currentPeriodStartTs, expiresAtTs, amountPulledInPeriod } =
-    subscription.data;
-  const service = findServiceByOwner(header.delegatee);
+  const { service, data } = serviceSub;
+  if (!data || dismissed) return null;
 
-  // The decoded account doesn't expose an explicit "cancelled" flag, so we infer it from
-  // `expiresAtTs`: an active/perpetual subscription's expiry is 0 (no expiry) or in the future.
+  const { terms, currentPeriodStartTs, expiresAtTs, amountPulledInPeriod } = data;
+  const isCancelled = expiresAtTs !== 0n;
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
-  const isCancelled = expiresAtTs !== 0n && expiresAtTs <= nowSeconds;
-
-  const periodDays = Number(terms.periodHours / 24n);
-  const nextBillingDate = new Date(
-    Number(currentPeriodStartTs + terms.periodHours * 3600n) * 1000,
-  );
+  const periodEndTs = currentPeriodStartTs + terms.periodHours * 3600n;
+  const nextBillingDate = new Date(Number(periodEndTs) * 1000);
   const amountUi = Number(terms.amount) / 10 ** USDC_DECIMALS;
   const pulledUi = Number(amountPulledInPeriod) / 10 ** USDC_DECIMALS;
+  const currentPeriodPaid = amountPulledInPeriod >= terms.amount;
+  const periodReset = periodEndTs <= nowSeconds;
 
   async function handleCancel() {
-    if (!service) return;
     setBusy("cancel");
     try {
-      const signature = await cancelService(connection, wallet, service);
-      logActivity(`Cancelled ${service.name}`, signature);
-      toast.success(`Cancelled ${service.name}.`);
+      const sig = await cancelService(connection, wallet, service, serviceSub.planPda);
+      logActivity(`Cancelled ${service.name}`, sig);
+      toast.success(`${service.name} cancelled.`);
+      setDismissed(true);
       refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Cancel failed.");
-    } finally {
-      setBusy(null);
-    }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cancel failed.");
+    } finally { setBusy(null); }
   }
 
   async function handleResume() {
-    if (!service) return;
     setBusy("resume");
     try {
-      const signature = await resumeService(connection, wallet, service);
-      logActivity(`Resumed ${service.name}`, signature);
+      const sig = await resumeService(connection, wallet, service, serviceSub.planPda);
+      logActivity(`Resumed ${service.name}`, sig);
       toast.success(`Resumed ${service.name}.`);
       refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Resume failed.");
-    } finally {
-      setBusy(null);
-    }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Resume failed.");
+    } finally { setBusy(null); }
   }
 
   async function handlePull() {
-    if (!service || !wallet.publicKey) return;
+    if (!wallet.publicKey) return;
     setBusy("pull");
     try {
-      const response = await fetch("/api/pull", {
+      const res = await fetch("/api/pull", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ serviceId: service.id, subscriber: wallet.publicKey.toBase58() }),
       });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error ?? "Simulated billing failed.");
-      logActivity(`${service.name} pulled $${json.amount}`, json.signature);
-      toast.success(`${service.name} pulled $${json.amount} USDC (simulated billing cycle).`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Payment failed.");
+      logActivity(`${service.name} collected $${json.amount}`, json.signature);
+      toast.success(`${service.name} collected $${json.amount} USDC.`);
       refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Simulated billing failed.");
-    } finally {
-      setBusy(null);
-    }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Payment failed.");
+    } finally { setBusy(null); }
   }
 
   return (
-    <Card className="border-border/60">
-      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: service?.color ?? "#888" }}
-          />
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-medium">{service?.name ?? "Unknown merchant"}</p>
-              <Badge variant={isCancelled ? "outline" : "default"}>
-                {isCancelled ? "Cancelled" : "Active"}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              ${amountUi} / {periodDays}d &middot; pulled ${pulledUi.toFixed(2)} this period
-            </p>
-          </div>
+    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      {/* Left: identity + status */}
+      <div className="flex items-center gap-3.5">
+        {/* Service colour dot */}
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+          style={{ backgroundColor: `${service.color}18`, color: service.color }}
+        >
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: service.color }} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            Next billing ~ {format(nextBillingDate, "MMM d, yyyy")}
-          </span>
-          <Button size="sm" variant="secondary" disabled={busy !== null} onClick={handlePull}>
-            {busy === "pull" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground">{service.name}</span>
+            {isCancelled ? (
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                Cancels soon
+              </span>
             ) : (
-              <Zap className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                <CheckCircle2 className="h-2.5 w-2.5" /> Active
+              </span>
             )}
-            Simulate billing
-          </Button>
-          {isCancelled ? (
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={handleResume}>
-              {busy === "resume" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <PlayCircle className="h-3.5 w-3.5" />
-              )}
-              Resume
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" disabled={busy !== null} onClick={handleCancel}>
-              {busy === "cancel" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <XCircle className="h-3.5 w-3.5" />
-              )}
-              Cancel
-            </Button>
-          )}
+          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            ${amountUi} / 30 days
+            {" · "}
+            <span className={pulledUi > 0 ? "text-emerald-600 font-medium" : ""}>
+              ${pulledUi.toFixed(2)} paid this period
+            </span>
+            {isCancelled && (
+              <span className="ml-2 text-amber-600">
+                · Access until {format(nextBillingDate, "MMM d")}
+              </span>
+            )}
+          </p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Right: actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        {!isCancelled && (
+          <span className="text-xs text-muted-foreground">
+            {currentPeriodPaid && !periodReset
+              ? `Renews ${format(nextBillingDate, "MMM d, yyyy")}`
+              : periodReset
+                ? "New period — payment due"
+                : `$${pulledUi.toFixed(2)} of $${amountUi} paid`}
+          </span>
+        )}
+
+        {!isCancelled && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 border-border"
+            disabled={busy !== null || (currentPeriodPaid && !periodReset)}
+            onClick={handlePull}
+          >
+            {busy === "pull" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            {currentPeriodPaid && !periodReset ? "Paid ✓" : "Collect payment"}
+          </Button>
+        )}
+
+        {isCancelled ? (
+          <Button
+            size="sm"
+            className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 border-0"
+            disabled={busy !== null}
+            onClick={handleResume}
+          >
+            {busy === "resume" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+            Resume
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 border-border text-muted-foreground hover:text-destructive hover:border-red-200"
+            disabled={busy !== null}
+            onClick={handleCancel}
+          >
+            {busy === "cancel" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+            Cancel
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
